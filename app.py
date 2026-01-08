@@ -25,12 +25,9 @@ import kagglehub
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from scripts.modeling.optimize_fanduel_csv import load_fanduel_csv, parse_positions
+from scripts.modeling.optimize_fanduel_csv import parse_positions
 from scripts.modeling.ilp_optimizer import optimize_lineup_ilp_fanduel
-from scripts.modeling.prediction_intervals import format_prediction_with_interval
-from scripts.data_processing.load_data import load_player_statistics
 from scripts.utils.fantasy_scoring import add_fantasy_score_column
-from scripts.utils.enhanced_features import add_enhanced_features
 
 # Page config
 st.set_page_config(
