@@ -1,0 +1,71 @@
+# Configuration file for NBA Fantasy Score Prediction Project
+
+# Data paths
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  external_path: "data/external"
+  dataset_name: "eoinamoore/historical-nba-data-and-player-box-scores"
+  main_file: "PlayerStatistics.csv"
+
+# Model paths
+models:
+  saved_path: "models/saved"
+  predictions_path: "models/predictions"
+
+# Train/validation/test split
+split:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_state: 42
+  temporal_split: true  # Use temporal split to prevent data leakage
+
+# Feature engineering
+features:
+  rolling_windows: [3, 5, 10]
+  include_career_stats: true
+  include_opponent_stats: true
+  include_game_context: true
+
+# Model hyperparameters
+models_config:
+  random_forest:
+    n_estimators: 100
+    max_depth: 20
+    min_samples_split: 5
+    min_samples_leaf: 2
+    random_state: 42
+  
+  xgboost:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+  
+  lightgbm:
+    n_estimators: 100
+    num_leaves: 31
+    learning_rate: 0.1
+    feature_fraction: 0.8
+    random_state: 42
+  
+  catboost:
+    iterations: 100
+    learning_rate: 0.1
+    depth: 6
+    random_state: 42
+
+# Evaluation metrics
+evaluation:
+  metrics: ["mae", "rmse", "r2", "mape"]
+  cv_folds: 5
+
+# Ensemble
+ensemble:
+  methods: ["averaging", "stacking", "blending"]
+  meta_learner: "ridge"
+
+
