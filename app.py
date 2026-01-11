@@ -99,15 +99,15 @@ def load_kaggle_data():
     """Load the latest Kaggle dataset (cached for 1 hour)."""
     try:
         # Download latest dataset
-        with st.spinner("📥 Downloading latest data from Kaggle..."):
-            download_path = kagglehub.dataset_download("eoinamoore/historical-nba-data-and-player-box-scores")
+        download_path = kagglehub.dataset_download("eoinamoore/historical-nba-data-and-player-box-scores")
         
-        # Load player statistics
+        # Load player statistics with proper dtype handling
         csv_path = Path(download_path) / "PlayerStatistics.csv"
         if not csv_path.exists():
             return None, "PlayerStatistics.csv not found in downloaded data"
         
-        df = pd.read_csv(csv_path)
+        # Load with low_memory=False to handle mixed dtypes
+        df = pd.read_csv(csv_path, low_memory=False)
         
         # Add fantasy scores
         df = add_fantasy_score_column(df)
@@ -558,31 +558,35 @@ def main():
         if st.session_state.data_last_updated:
             st.info(f"Last updated: {st.session_state.data_last_updated}")
         
-        if st.button("🔄 Update from Kaggle", help="Download latest player data from Kaggle"):
+        if st.button("🔄 Update from Kaggle", help="Download latest player data from Kaggle (takes 60-90 seconds)"):
             if not setup_kaggle_credentials():
                 st.error("❌ Kaggle credentials not found! Please set up credentials.")
                 st.markdown("""
                 **Setup Instructions:**
                 1. Go to https://www.kaggle.com/settings/account
                 2. Click "Create New API Token"
-                3. Download kaggle.json
-                4. Place it in ~/.kaggle/kaggle.json
-                
-                Or add to Streamlit secrets (for cloud deployment):
+                3. Add to Streamlit Settings → Secrets:
                 ```
                 [kaggle]
                 username = "your_username"
                 key = "your_key"
                 ```
+                4. Save and restart app
                 """)
             else:
-                kaggle_data, error = load_kaggle_data()
-                if error:
-                    st.error(f"❌ {error}")
-                else:
-                    st.session_state.kaggle_data = kaggle_data
-                    st.session_state.data_last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    st.success(f"✅ Loaded {len(kaggle_data):,} player records!")
+                st.info("⏳ Downloading 52MB dataset... This takes 60-90 seconds. Please wait...")
+                try:
+                    kaggle_data, error = load_kaggle_data()
+                    if error:
+                        st.error(f"❌ {error}")
+                    else:
+                        st.session_state.kaggle_data = kaggle_data
+                        st.session_state.data_last_updated = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        st.success(f"✅ Loaded {len(kaggle_data):,} player records!")
+                        st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+                    st.warning("💡 You can still use the app without Kaggle data. Just upload your FanDuel CSV!")
         
         st.markdown("---")
         
@@ -663,27 +667,34 @@ def main():
         st.info("👈 Upload a FanDuel CSV file to get started!")
         
         st.markdown("""
-        ### ✨ New Features:
+        ### 🚀 Quick Start (No Setup Required!):
         
-        - **🤖 ML Predictions**: Uses trained CatBoost model for accurate fantasy score predictions
-        - **📊 Kaggle Integration**: Update player database directly from Kaggle
-        - **🎯 ILP Optimization**: Mathematically optimal lineups
-        - **📤 FanDuel Ready**: Direct CSV export in FanDuel upload format
+        1. **Upload** your FanDuel player list CSV  
+        2. **Generate** optimal lineups using ILP  
+        3. **Download** FanDuel-ready CSV  
+        4. **Upload** to FanDuel and win! 💰
         
-        ### How to use:
+        ### ✨ Features:
         
-        1. **Update Data** (optional): Click "Update from Kaggle" to get latest player stats
-        2. **Upload** your FanDuel player list CSV
-        3. **Review** the player pool and ML predictions
-        4. **Generate** optimal lineups using ILP
-        5. **Download** and upload directly to FanDuel!
+        - **🎯 ILP Optimization**: Mathematically optimal lineups (guaranteed best!)
+        - **⚡ Fast**: Optimizes 200+ players in 2-3 seconds
+        - **📤 FanDuel Ready**: Direct CSV export in correct format
+        - **🤕 Smart**: Automatically filters injured players
+        - **🤖 ML Model**: CatBoost predictions (uses FPPG from your CSV)
         
-        ### Setup (First Time):
+        ### 📊 Optional: Kaggle Integration
         
-        To enable Kaggle data updates:
-        1. Get your Kaggle API key from https://www.kaggle.com/settings/account
-        2. Download kaggle.json and place in ~/.kaggle/
-        3. Click "Update from Kaggle" button
+        Want ML predictions on historical data?  
+        1. Get API key: https://www.kaggle.com/settings/account  
+        2. Add to Settings → Secrets:
+        ```
+        [kaggle]
+        username = "your_username"
+        key = "your_api_key"
+        ```
+        3. Click "🔄 Update from Kaggle" (takes 60-90 seconds)
+        
+        **Note:** Kaggle is optional - the app works perfectly without it!
         """)
         
     else:
