@@ -118,34 +118,42 @@ def load_kaggle_data():
 
 
 def get_kaggle_credentials():
-    """Get Kaggle credentials from Streamlit secrets or environment."""
+    """Get Kaggle credentials from kaggle.json, environment, or Streamlit secrets."""
+    # Try kaggle.json file first (local development)
     try:
-        # Try Streamlit secrets first (for cloud deployment)
-        if hasattr(st, 'secrets') and 'kaggle' in st.secrets:
-            return {
-                'username': st.secrets['kaggle']['username'],
-                'key': st.secrets['kaggle']['key']
-            }
-        
-        # Try environment variables
-        if 'KAGGLE_USERNAME' in os.environ and 'KAGGLE_KEY' in os.environ:
-            return {
-                'username': os.environ['KAGGLE_USERNAME'],
-                'key': os.environ['KAGGLE_KEY']
-            }
-        
-        # Try kaggle.json file
         kaggle_json = Path.home() / '.kaggle' / 'kaggle.json'
         if kaggle_json.exists():
             import json
             with open(kaggle_json) as f:
                 creds = json.load(f)
             return creds
-        
-        return None
     except Exception as e:
-        st.error(f"Error getting Kaggle credentials: {e}")
-        return None
+        pass  # Continue to next method
+    
+    # Try environment variables
+    try:
+        if 'KAGGLE_USERNAME' in os.environ and 'KAGGLE_KEY' in os.environ:
+            return {
+                'username': os.environ['KAGGLE_USERNAME'],
+                'key': os.environ['KAGGLE_KEY']
+            }
+    except Exception:
+        pass  # Continue to next method
+    
+    # Try Streamlit secrets (cloud deployment)
+    try:
+        if hasattr(st, 'secrets'):
+            # This will throw an exception if secrets.toml doesn't exist
+            secrets = st.secrets
+            if 'kaggle' in secrets:
+                return {
+                    'username': secrets['kaggle']['username'],
+                    'key': secrets['kaggle']['key']
+                }
+    except Exception:
+        pass  # No secrets file, that's okay
+    
+    return None
 
 
 def setup_kaggle_credentials():
