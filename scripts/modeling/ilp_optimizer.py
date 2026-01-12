@@ -88,13 +88,30 @@ def optimize_lineup_ilp_fanduel(players_df, salary_cap=60000, num_lineups=3, div
         # Constraint 2: Exactly 9 players
         prob += lpSum([player_vars[idx] for idx in valid.index]) == 9, "Total_Players"
         
-        # Constraint 3: Position requirements
+        # Constraint 3: Position requirements (with roster assignment)
+        # Each player can only fill ONE roster spot
         positions_needed = {'PG': 2, 'SG': 2, 'SF': 2, 'PF': 2, 'C': 1}
         
+        # Create position assignment variables
+        position_vars = {}
+        for idx in valid.index:
+            for pos in positions_needed.keys():
+                if pos in valid.loc[idx, 'positions']:
+                    position_vars[(idx, pos)] = LpVariable(f"player_{idx}_as_{pos}", cat='Binary')
+        
+        # Each position must have exactly the required number of players
         for pos, count in positions_needed.items():
-            # Players who can play this position
-            can_play_pos = valid.index[valid['positions'].apply(lambda x: pos in x)]
-            prob += lpSum([player_vars[idx] for idx in can_play_pos]) == count, f"Position_{pos}"
+            prob += lpSum([
+                position_vars.get((idx, pos), 0)
+                for idx in valid.index
+            ]) == count, f"Position_{pos}_Count"
+        
+        # Each player can only be assigned to ONE position (if selected)
+        for idx in valid.index:
+            prob += lpSum([
+                position_vars.get((idx, pos), 0)
+                for pos in positions_needed.keys()
+            ]) == player_vars[idx], f"Player_{idx}_Single_Position"
         
         # Solve the problem
         prob.solve(PULP_CBC_CMD(msg=0))  # msg=0 suppresses solver output
@@ -108,16 +125,12 @@ def optimize_lineup_ilp_fanduel(players_df, salary_cap=60000, num_lineups=3, div
             total_salary = lineup_df['salary'].sum()
             total_points = lineup_df['predicted_fantasy_score'].sum()
             
-            # Assign roster positions based on positions needed
+            # Assign roster positions based on ILP solution
             lineup_df['roster_position'] = ''
-            positions_assigned = {pos: 0 for pos in positions_needed.keys()}
-            
-            for idx in lineup_df.index:
-                player_positions = lineup_df.loc[idx, 'positions']
-                for pos in ['C', 'PG', 'SG', 'SF', 'PF']:  # Priority order
-                    if pos in player_positions and positions_assigned[pos] < positions_needed[pos]:
+            for idx in selected_indices:
+                for pos in positions_needed.keys():
+                    if (idx, pos) in position_vars and position_vars[(idx, pos)].varValue == 1:
                         lineup_df.loc[idx, 'roster_position'] = pos
-                        positions_assigned[pos] += 1
                         break
             
             lineups.append(lineup_df)
