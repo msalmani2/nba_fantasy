@@ -191,6 +191,13 @@ def predict_with_ml(fanduel_df, model, historical_data):
         
         st.info("🤖 Running ML predictions...")
         predictions_made = 0
+        matched_players = []
+        unmatched_players = []
+        
+        # Pre-create full_name column in historical data once
+        if 'firstName' in historical_data.columns and 'lastName' in historical_data.columns:
+            historical_data = historical_data.copy()
+            historical_data['full_name'] = (historical_data['firstName'] + ' ' + historical_data['lastName']).str.lower()
         
         # For each player in FanDuel CSV
         for idx, player_row in fanduel_df.iterrows():
@@ -210,22 +217,35 @@ def predict_with_ml(fanduel_df, model, historical_data):
                         prediction = model.predict(features)[0]
                         fanduel_df.at[idx, 'predicted_fantasy_score'] = prediction
                         predictions_made += 1
+                        matched_players.append(player_name)
                     except Exception as e:
                         # Keep FPPG if prediction fails
-                        pass
+                        unmatched_players.append(f"{player_name} (pred error)")
+                else:
+                    unmatched_players.append(f"{player_name} (no features)")
+            else:
+                unmatched_players.append(player_name)
         
         # Recalculate value with new predictions
         fanduel_df['value'] = fanduel_df['predicted_fantasy_score'] / (fanduel_df['salary'] / 1000)
         
         if predictions_made > 0:
             st.success(f"✅ Made ML predictions for {predictions_made}/{len(fanduel_df)} players!")
+            with st.expander(f"📊 View matched players ({len(matched_players)})"):
+                st.write(", ".join(matched_players[:10]) + ("..." if len(matched_players) > 10 else ""))
         else:
             st.warning("⚠️ Could not match players with historical data. Using FPPG.")
+            
+        if len(unmatched_players) > 0:
+            with st.expander(f"⚠️ Unmatched players ({len(unmatched_players)})"):
+                st.write(", ".join(unmatched_players[:20]) + ("..." if len(unmatched_players) > 20 else ""))
         
         return fanduel_df
         
     except Exception as e:
         st.error(f"Prediction error: {e}. Using FPPG as fallback.")
+        import traceback
+        st.code(traceback.format_exc())
         return fanduel_df
 
 
@@ -235,10 +255,8 @@ def match_player(player_name, team, historical_data):
         # Clean player name for matching
         clean_name = player_name.strip().lower()
         
-        # Create full name from firstName + lastName if needed
-        if 'firstName' in historical_data.columns and 'lastName' in historical_data.columns:
-            historical_data = historical_data.copy()
-            historical_data['full_name'] = (historical_data['firstName'] + ' ' + historical_data['lastName']).str.lower()
+        # Determine which name column to use
+        if 'full_name' in historical_data.columns:
             name_column = 'full_name'
         elif 'PLAYER_NAME' in historical_data.columns:
             name_column = 'PLAYER_NAME'
@@ -248,9 +266,11 @@ def match_player(player_name, team, historical_data):
             return None
         
         # Try exact match first
-        matches = historical_data[
-            historical_data[name_column].str.lower() == clean_name
-        ]
+        if name_column == 'full_name':
+            # Already lowercase
+            matches = historical_data[historical_data[name_column] == clean_name]
+        else:
+            matches = historical_data[historical_data[name_column].str.lower() == clean_name]
         
         # Filter by team if available
         team_column = None
@@ -277,9 +297,14 @@ def match_player(player_name, team, historical_data):
         # Try fuzzy matching if exact match fails (match last name)
         if len(clean_name.split()) > 0:
             last_name = clean_name.split()[-1]
-            partial_matches = historical_data[
-                historical_data[name_column].str.lower().str.contains(last_name, na=False)
-            ]
+            if name_column == 'full_name':
+                partial_matches = historical_data[
+                    historical_data[name_column].str.contains(last_name, na=False)
+                ]
+            else:
+                partial_matches = historical_data[
+                    historical_data[name_column].str.lower().str.contains(last_name, na=False)
+                ]
             
             if len(partial_matches) > 0:
                 date_column = 'gameDateTimeEst' if 'gameDateTimeEst' in partial_matches.columns else 'GAME_DATE'
