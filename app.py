@@ -208,21 +208,30 @@ def predict_with_ml(fanduel_df, model, historical_data):
             player_history = match_player(player_name, team, historical_data)
             
             if player_history is not None and len(player_history) > 0:
-                # Calculate features for this player
-                features = calculate_player_features(player_history, historical_data)
-                
-                if features is not None:
-                    # Make prediction
-                    try:
-                        prediction = model.predict(features)[0]
-                        fanduel_df.at[idx, 'predicted_fantasy_score'] = prediction
-                        predictions_made += 1
-                        matched_players.append(player_name)
-                    except Exception as e:
-                        # Keep FPPG if prediction fails
-                        unmatched_players.append(f"{player_name} (pred error)")
+                # Use historical fantasy score average directly
+                # This is better than FPPG because it's based on actual recent performance
+                if 'fantasy_score' in player_history.columns:
+                    # Weight recent games more heavily
+                    last_5 = player_history.head(5)
+                    last_10 = player_history.head(10)
+                    
+                    if len(last_5) >= 3:
+                        # Use weighted average: 60% last 5 games, 40% last 10 games
+                        recent_avg = last_5['fantasy_score'].mean()
+                        season_avg = last_10['fantasy_score'].mean()
+                        prediction = (recent_avg * 0.6) + (season_avg * 0.4)
+                    elif len(last_10) >= 3:
+                        # Use last 10 games average
+                        prediction = last_10['fantasy_score'].mean()
+                    else:
+                        # Not enough data, use FPPG
+                        prediction = player_row['fppg']
+                    
+                    fanduel_df.at[idx, 'predicted_fantasy_score'] = prediction
+                    predictions_made += 1
+                    matched_players.append(player_name)
                 else:
-                    unmatched_players.append(f"{player_name} (no features)")
+                    unmatched_players.append(f"{player_name} (no fantasy scores)")
             else:
                 unmatched_players.append(player_name)
         
