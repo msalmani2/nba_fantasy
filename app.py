@@ -208,30 +208,59 @@ def predict_with_ml(fanduel_df, model, historical_data):
             player_history = match_player(player_name, team, historical_data)
             
             if player_history is not None and len(player_history) > 0:
-                # Use historical fantasy score average directly
-                # This is better than FPPG because it's based on actual recent performance
-                if 'fantasy_score' in player_history.columns:
-                    # Weight recent games more heavily
-                    last_5 = player_history.head(5)
-                    last_10 = player_history.head(10)
+                # Calculate fantasy scores from raw stats if not present
+                if 'fantasy_score' not in player_history.columns:
+                    # Calculate FanDuel fantasy scores from raw stats
+                    player_history = player_history.copy()
                     
-                    if len(last_5) >= 3:
-                        # Use weighted average: 60% last 5 games, 40% last 10 games
-                        recent_avg = last_5['fantasy_score'].mean()
-                        season_avg = last_10['fantasy_score'].mean()
-                        prediction = (recent_avg * 0.6) + (season_avg * 0.4)
-                    elif len(last_10) >= 3:
-                        # Use last 10 games average
-                        prediction = last_10['fantasy_score'].mean()
-                    else:
-                        # Not enough data, use FPPG
-                        prediction = player_row['fppg']
+                    # Map column names
+                    pts = player_history['points'] if 'points' in player_history.columns else 0
+                    reb = player_history['rebounds'] if 'rebounds' in player_history.columns else 0
+                    ast = player_history['assists'] if 'assists' in player_history.columns else 0
+                    stl = player_history['steals'] if 'steals' in player_history.columns else 0
+                    blk = player_history['blocks'] if 'blocks' in player_history.columns else 0
+                    tov = player_history['turnovers'] if 'turnovers' in player_history.columns else 0
                     
-                    fanduel_df.at[idx, 'predicted_fantasy_score'] = prediction
-                    predictions_made += 1
-                    matched_players.append(player_name)
+                    # Get field goals made (need to calculate from points and 3-pointers)
+                    fg3m = player_history['threePointersMade'] if 'threePointersMade' in player_history.columns else 0
+                    ftm = player_history['freeThrowsMade'] if 'freeThrowsMade' in player_history.columns else 0
+                    
+                    # Calculate 2-point field goals made
+                    # points = (3 * fg3m) + (2 * fg2m) + ftm
+                    # fg2m = (points - (3 * fg3m) - ftm) / 2
+                    fg2m = ((pts - (3 * fg3m) - ftm) / 2).clip(lower=0)
+                    
+                    # FanDuel scoring
+                    player_history['fantasy_score'] = (
+                        fg3m * 3.0 +      # 3-pt FG: +3
+                        fg2m * 2.0 +      # 2-pt FG: +2
+                        ftm * 1.0 +       # FT: +1
+                        reb * 1.2 +       # Rebound: +1.2
+                        ast * 1.5 +       # Assist: +1.5
+                        stl * 3.0 +       # Steal: +3
+                        blk * 3.0 +       # Block: +3
+                        tov * -1.0        # Turnover: -1
+                    )
+                
+                # Use weighted average of recent fantasy scores
+                last_5 = player_history.head(5)
+                last_10 = player_history.head(10)
+                
+                if len(last_5) >= 3:
+                    # Use weighted average: 60% last 5 games, 40% last 10 games
+                    recent_avg = last_5['fantasy_score'].mean()
+                    season_avg = last_10['fantasy_score'].mean()
+                    prediction = (recent_avg * 0.6) + (season_avg * 0.4)
+                elif len(last_10) >= 3:
+                    # Use last 10 games average
+                    prediction = last_10['fantasy_score'].mean()
                 else:
-                    unmatched_players.append(f"{player_name} (no fantasy scores)")
+                    # Not enough data, use FPPG
+                    prediction = player_row['fppg']
+                
+                fanduel_df.at[idx, 'predicted_fantasy_score'] = prediction
+                predictions_made += 1
+                matched_players.append(player_name)
             else:
                 unmatched_players.append(player_name)
         
