@@ -235,44 +235,57 @@ def match_player(player_name, team, historical_data):
         # Clean player name for matching
         clean_name = player_name.strip().lower()
         
-        # Try exact match first
-        if 'PLAYER_NAME' in historical_data.columns:
-            matches = historical_data[
-                historical_data['PLAYER_NAME'].str.lower() == clean_name
-            ]
+        # Create full name from firstName + lastName if needed
+        if 'firstName' in historical_data.columns and 'lastName' in historical_data.columns:
+            historical_data = historical_data.copy()
+            historical_data['full_name'] = (historical_data['firstName'] + ' ' + historical_data['lastName']).str.lower()
+            name_column = 'full_name'
+        elif 'PLAYER_NAME' in historical_data.columns:
+            name_column = 'PLAYER_NAME'
         elif 'playerName' in historical_data.columns:
-            matches = historical_data[
-                historical_data['playerName'].str.lower() == clean_name
-            ]
+            name_column = 'playerName'
         else:
             return None
         
+        # Try exact match first
+        matches = historical_data[
+            historical_data[name_column].str.lower() == clean_name
+        ]
+        
         # Filter by team if available
-        if len(matches) > 0 and team and 'TEAM_ABBREVIATION' in historical_data.columns:
-            team_matches = matches[matches['TEAM_ABBREVIATION'] == team]
+        team_column = None
+        if 'playerteamName' in historical_data.columns:
+            team_column = 'playerteamName'
+        elif 'TEAM_ABBREVIATION' in historical_data.columns:
+            team_column = 'TEAM_ABBREVIATION'
+        
+        if len(matches) > 0 and team and team_column:
+            # Try matching team abbreviation
+            team_matches = matches[matches[team_column].str.upper() == team.upper()]
             if len(team_matches) > 0:
                 matches = team_matches
         
-        # Get recent games (last 10)
+        # Get recent games (last 10) - sort by date
         if len(matches) > 0:
-            matches = matches.sort_values('GAME_DATE', ascending=False).head(10)
+            date_column = 'gameDateTimeEst' if 'gameDateTimeEst' in historical_data.columns else 'GAME_DATE'
+            if date_column in matches.columns:
+                matches = matches.sort_values(date_column, ascending=False).head(10)
+            else:
+                matches = matches.head(10)
             return matches
         
-        # Try fuzzy matching if exact match fails
-        # (Simple version - just check if name is contained)
-        if 'PLAYER_NAME' in historical_data.columns:
+        # Try fuzzy matching if exact match fails (match last name)
+        if len(clean_name.split()) > 0:
+            last_name = clean_name.split()[-1]
             partial_matches = historical_data[
-                historical_data['PLAYER_NAME'].str.lower().str.contains(clean_name.split()[0], na=False)
+                historical_data[name_column].str.lower().str.contains(last_name, na=False)
             ]
-        elif 'playerName' in historical_data.columns:
-            partial_matches = historical_data[
-                historical_data['playerName'].str.lower().str.contains(clean_name.split()[0], na=False)
-            ]
-        else:
-            return None
-        
-        if len(partial_matches) > 0:
-            return partial_matches.sort_values('GAME_DATE', ascending=False).head(10)
+            
+            if len(partial_matches) > 0:
+                date_column = 'gameDateTimeEst' if 'gameDateTimeEst' in partial_matches.columns else 'GAME_DATE'
+                if date_column in partial_matches.columns:
+                    return partial_matches.sort_values(date_column, ascending=False).head(10)
+                return partial_matches.head(10)
         
         return None
         
@@ -292,30 +305,36 @@ def calculate_player_features(player_history, full_data):
         # Calculate rolling averages (last 5 games)
         last_5 = player_history.head(5)
         
+        # Map column names (Kaggle uses lowercase)
+        pts_col = 'points' if 'points' in last_5.columns else 'PTS'
+        reb_col = 'rebounds' if 'rebounds' in last_5.columns else 'REB'
+        ast_col = 'assists' if 'assists' in last_5.columns else 'AST'
+        stl_col = 'steals' if 'steals' in last_5.columns else 'STL'
+        blk_col = 'blocks' if 'blocks' in last_5.columns else 'BLK'
+        tov_col = 'turnovers' if 'turnovers' in last_5.columns else 'TOV'
+        min_col = 'numMinutes' if 'numMinutes' in last_5.columns else 'MIN'
+        
         features = pd.DataFrame([{
             # Recent performance (last 5 games averages)
-            'pts_last5': last_5['PTS'].mean() if 'PTS' in last_5.columns else 0,
-            'reb_last5': last_5['REB'].mean() if 'REB' in last_5.columns else 0,
-            'ast_last5': last_5['AST'].mean() if 'AST' in last_5.columns else 0,
-            'stl_last5': last_5['STL'].mean() if 'STL' in last_5.columns else 0,
-            'blk_last5': last_5['BLK'].mean() if 'BLK' in last_5.columns else 0,
-            'tov_last5': last_5['TOV'].mean() if 'TOV' in last_5.columns else 0,
-            'fg_pct_last5': last_5['FG_PCT'].mean() if 'FG_PCT' in last_5.columns else 0,
-            'fg3_pct_last5': last_5['FG3_PCT'].mean() if 'FG3_PCT' in last_5.columns else 0,
-            'ft_pct_last5': last_5['FT_PCT'].mean() if 'FT_PCT' in last_5.columns else 0,
-            'min_last5': last_5['MIN'].mean() if 'MIN' in last_5.columns else 0,
+            'pts_last5': last_5[pts_col].mean() if pts_col in last_5.columns else 0,
+            'reb_last5': last_5[reb_col].mean() if reb_col in last_5.columns else 0,
+            'ast_last5': last_5[ast_col].mean() if ast_col in last_5.columns else 0,
+            'stl_last5': last_5[stl_col].mean() if stl_col in last_5.columns else 0,
+            'blk_last5': last_5[blk_col].mean() if blk_col in last_5.columns else 0,
+            'tov_last5': last_5[tov_col].mean() if tov_col in last_5.columns else 0,
+            'min_last5': last_5[min_col].mean() if min_col in last_5.columns else 0,
             
             # Fantasy score average
             'fantasy_score_last5': last_5['fantasy_score'].mean() if 'fantasy_score' in last_5.columns else 0,
             
             # Season averages (all available games)
-            'pts_season': player_history['PTS'].mean() if 'PTS' in player_history.columns else 0,
-            'reb_season': player_history['REB'].mean() if 'REB' in player_history.columns else 0,
-            'ast_season': player_history['AST'].mean() if 'AST' in player_history.columns else 0,
+            'pts_season': player_history[pts_col].mean() if pts_col in player_history.columns else 0,
+            'reb_season': player_history[reb_col].mean() if reb_col in player_history.columns else 0,
+            'ast_season': player_history[ast_col].mean() if ast_col in player_history.columns else 0,
             'fantasy_score_season': player_history['fantasy_score'].mean() if 'fantasy_score' in player_history.columns else 0,
             
             # Consistency metrics
-            'pts_std': player_history['PTS'].std() if 'PTS' in player_history.columns else 0,
+            'pts_std': player_history[pts_col].std() if pts_col in player_history.columns else 0,
             'fantasy_score_std': player_history['fantasy_score'].std() if 'fantasy_score' in player_history.columns else 0,
             
             # Games played
