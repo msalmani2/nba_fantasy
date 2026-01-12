@@ -8,10 +8,22 @@ font = "sans serif"
 [server]
 headless = true
 port = 8501
-enableCORS = false
-enableXsrfProtection = true
+enableCORS = true
+enableXsrfProtection = false
+maxUploadSize = 200
+fileWatcherType = "auto"
 
 [browser]
 gatherUsageStats = false
+serverAddress = "localhost"
 
+[runner]
+magicEnabled = true
+fastReruns = true
 
+# Increase timeout for long operations
+[client]
+showErrorDetails = true
+
+[logger]
+level = "info"

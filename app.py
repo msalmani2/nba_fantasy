@@ -194,10 +194,11 @@ def predict_with_ml(fanduel_df, model, historical_data):
         matched_players = []
         unmatched_players = []
         
-        # Pre-create full_name column in historical data once
-        if 'firstName' in historical_data.columns and 'lastName' in historical_data.columns:
-            historical_data = historical_data.copy()
-            historical_data['full_name'] = (historical_data['firstName'] + ' ' + historical_data['lastName']).str.lower()
+        # Pre-create full_name column in historical data once (if not already there)
+        if 'full_name' not in historical_data.columns:
+            if 'firstName' in historical_data.columns and 'lastName' in historical_data.columns:
+                historical_data = historical_data.copy()
+                historical_data['full_name'] = (historical_data['firstName'] + ' ' + historical_data['lastName']).str.lower()
         
         # For each player in FanDuel CSV
         for idx, player_row in fanduel_df.iterrows():
@@ -574,7 +575,7 @@ def display_player_table(df):
         cols.append('Status')
     display_df.columns = cols
     
-    st.dataframe(display_df, use_container_width=True, height=400)
+    st.dataframe(display_df, width="stretch", height=400)
 
 
 def optimize_lineups(df, num_lineups, salary_cap, use_ilp):
@@ -748,7 +749,7 @@ def display_lineup_comparison(lineups):
             color_continuous_scale='Blues'
         )
         fig1.update_layout(showlegend=False)
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True)  # Using legacy param for Plotly compatibility
     
     with col2:
         fig2 = px.bar(
@@ -760,7 +761,7 @@ def display_lineup_comparison(lineups):
             color_continuous_scale='Greens'
         )
         fig2.update_layout(showlegend=False)
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True)  # Using legacy param for Plotly compatibility
 
 
 def main():
